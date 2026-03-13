@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SOCratic — AI Alert Triage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg0: #0a0c0f;
+      --bg1: #0f1218;
+      --bg2: #151a22;
+      --bg3: #1c232e;
+      --bg4: #232c3a;
+      --border: #1e2a38;
+      --border2: #2a3a4e;
+      --text0: #e8edf4;
+      --text1: #a8b8cc;
+      --text2: #5a7080;
+      --accent: #00c8ff;
+      --accent2: #0096cc;
+      --green: #00e57a;
+      --green2: #00a855;
+      --amber: #ffb020;
+      --amber2: #cc8800;
+      --red: #ff4455;
+      --red2: #cc2233;
+      --purple: #b060ff;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'IBM Plex Sans', sans-serif;
+    }
+
+    html, body { height: 100%; background: var(--bg0); color: var(--text0); font-family: var(--sans); }
+
+    /* ── Layout ── */
+    .app { display: grid; grid-template-rows: 56px 1fr; height: 100vh; overflow: hidden; }
+    .main { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+    @media (max-width: 900px) { .main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; gap: 16px;
+      padding: 0 24px; background: var(--bg1);
+      border-bottom: 1px solid var(--border);
+      position: relative; z-index: 10;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-mark {
+      width: 28px; height: 28px; border: 1.5px solid var(--accent);
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent);
+      position: relative;
+    }
+    .logo-mark::after {
+      content: ''; position: absolute; inset: 2px; border-radius: 3px;
+      background: var(--accent); opacity: 0.08;
+    }
+    .logo-name { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: 0.08em; color: var(--text0); }
+    .logo-tag { font-family: var(--mono); font-size: 10px; color: var(--accent); opacity: 0.7; letter-spacing: 0.1em; }
+    .header-mid { flex: 1; }
+    .status-bar { display: flex; align-items: center; gap: 20px; }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .status-text { font-family: var(--mono); font-size: 11px; color: var(--text2); letter-spacing: 0.05em; }
+    .status-text span { color: var(--green); }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .model-badge {
+      font-family: var(--mono); font-size: 10px; color: var(--accent2);
+      border: 1px solid var(--border2); border-radius: 4px; padding: 3px 8px;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Panels ── */
+    .panel { display: flex; flex-direction: column; overflow: hidden; }
+    .panel-left { background: var(--bg1); border-right: 1px solid var(--border); }
+    .panel-right { background: var(--bg0); }
+    .panel-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 20px; border-bottom: 1px solid var(--border);
+      background: var(--bg2); flex-shrink: 0;
+    }
+    .panel-title { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: var(--text2); text-transform: uppercase; }
+    .panel-title span { color: var(--accent); margin-right: 6px; }
+    .panel-body { flex: 1; overflow-y: auto; padding: 20px; }
+    .panel-body::-webkit-scrollbar { width: 4px; }
+    .panel-body::-webkit-scrollbar-track { background: transparent; }
+    .panel-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* ── Input area ── */
+    .input-section { display: flex; flex-direction: column; gap: 12px; height: 100%; }
+    .source-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .source-btn {
+      font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.06em;
+      padding: 5px 12px; border-radius: 4px; border: 1px solid var(--border2);
+      background: transparent; color: var(--text2); cursor: pointer; transition: all 0.15s;
+      text-transform: uppercase;
+    }
+    .source-btn:hover { border-color: var(--accent2); color: var(--accent); }
+    .source-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,200,255,0.06); }
+
+    .alert-textarea {
+      flex: 1; min-height: 280px; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px; color: var(--text0); font-family: var(--mono);
+      font-size: 12px; line-height: 1.7; resize: none; outline: none; transition: border-color 0.2s;
+    }
+    .alert-textarea:focus { border-color: var(--border2); }
+    .alert-textarea::placeholder { color: var(--text2); }
+
+    .context-input {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 14px; color: var(--text1); font-family: var(--sans); font-size: 13px;
+      outline: none; transition: border-color 0.2s; width: 100%;
+    }
+    .context-input:focus { border-color: var(--border2); }
+    .context-input::placeholder { color: var(--text2); }
+
+    .label { font-family: var(--mono); font-size: 10px; color: var(--text2); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+
+    .analyze-btn {
+      width: 100%; padding: 13px; border-radius: 7px; border: none; cursor: pointer;
+      font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; transition: all 0.2s; position: relative; overflow: hidden;
+      background: var(--accent); color: var(--bg0);
+    }
+    .analyze-btn:hover:not(:disabled) { background: #33d4ff; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,200,255,0.3); }
+    .analyze-btn:disabled { background: var(--bg4); color: var(--text2); cursor: not-allowed; transform: none; box-shadow: none; }
+    .analyze-btn.loading { background: var(--bg4); color: var(--accent); border: 1px solid var(--border2); }
+
+    .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Quick examples ── */
+    .examples { display: flex; flex-direction: column; gap: 6px; }
+    .example-btn {
+      text-align: left; background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 14px; cursor: pointer; transition: all 0.15s;
+    }
+    .example-btn:hover { border-color: var(--border2); background: var(--bg4); }
+    .example-title { font-family: var(--mono); font-size: 11px; color: var(--accent); margin-bottom: 2px; }
+    .example-desc { font-size: 12px; color: var(--text2); }
+
+    /* ── Results ── */
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; gap: 16px; opacity: 0.4;
+    }
+    .empty-icon { font-family: var(--mono); font-size: 48px; color: var(--border2); }
+    .empty-text { font-family: var(--mono); font-size: 12px; color: var(--text2); letter-spacing: 0.08em; text-align: center; line-height: 1.8; }
+
+    .results { display: flex; flex-direction: column; gap: 16px; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    /* Summary card */
+    .card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden;
+    }
+    .card-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      background: var(--bg3);
+    }
+    .card-title { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text2); letter-spacing: 0.1em; text-transform: uppercase; flex: 1; }
+    .card-body { padding: 14px 16px; }
+
+    /* Severity badge */
+    .severity-badge {
+      font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+      padding: 3px 10px; border-radius: 3px; text-transform: uppercase;
+    }
+    .sev-critical { background: rgba(255,68,85,0.15); color: var(--red); border: 1px solid rgba(255,68,85,0.3); }
+    .sev-high     { background: rgba(255,176,32,0.12); color: var(--amber); border: 1px solid rgba(255,176,32,0.3); }
+    .sev-medium   { background: rgba(176,96,255,0.12); color: var(--purple); border: 1px solid rgba(176,96,255,0.3); }
+    .sev-low      { background: rgba(0,229,122,0.1); color: var(--green); border: 1px solid rgba(0,229,122,0.2); }
+    .sev-info     { background: rgba(0,200,255,0.08); color: var(--accent); border: 1px solid rgba(0,200,255,0.2); }
+
+    .summary-text { font-size: 13px; color: var(--text1); line-height: 1.7; }
+    .alert-type-tag {
+      display: inline-block; margin-top: 10px; font-family: var(--mono); font-size: 10px;
+      color: var(--text2); border: 1px solid var(--border2); border-radius: 3px; padding: 2px 8px;
+    }
+
+    /* FP Score */
+    .fp-row { display: flex; align-items: center; gap: 16px; }
+    .fp-score-big { font-family: var(--mono); font-size: 36px; font-weight: 600; line-height: 1; }
+    .fp-score-label { font-family: var(--mono); font-size: 10px; color: var(--text2); margin-top: 4px; }
+    .fp-bar-wrap { flex: 1; }
+    .fp-bar-track { height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+    .fp-bar-fill { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
+    .fp-label-big { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+    .fp-reasoning { font-size: 12px; color: var(--text2); margin-top: 8px; line-height: 1.6; }
+    .fp-indicators { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .fp-indicator {
+      font-family: var(--mono); font-size: 10px; padding: 3px 8px; border-radius: 3px;
+      background: var(--bg4); border: 1px solid var(--border2); color: var(--text2);
+    }
+
+    /* MITRE */
+    .mitre-list { display: flex; flex-direction: column; gap: 8px; }
+    .mitre-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 10px 12px; background: var(--bg3); border-radius: 6px;
+      border: 1px solid var(--border); transition: border-color 0.15s;
+    }
+    .mitre-item:hover { border-color: var(--border2); }
+    .mitre-id { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--accent); white-space: nowrap; min-width: 80px; }
+    .mitre-info { flex: 1; }
+    .mitre-name { font-size: 12px; color: var(--text0); font-weight: 500; }
+    .mitre-tactic { font-family: var(--mono); font-size: 10px; color: var(--text2); margin-top: 2px; }
+    .mitre-conf { font-family: var(--mono); font-size: 10px; color: var(--text2); white-space: nowrap; }
+    .conf-bar { width: 40px; height: 3px; background: var(--bg4); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+    .conf-fill { height: 100%; background: var(--accent2); border-radius: 2px; }
+    .mitre-link { font-family: var(--mono); font-size: 10px; color: var(--accent2); text-decoration: none; opacity: 0.7; }
+    .mitre-link:hover { opacity: 1; }
+
+    /* Investigation steps */
+    .steps-list { display: flex; flex-direction: column; gap: 8px; }
+    .step-item { display: flex; gap: 12px; padding: 10px 12px; background: var(--bg3); border-radius: 6px; border-left: 3px solid; }
+    .step-immediate { border-color: var(--red); }
+    .step-high { border-color: var(--amber); }
+    .step-medium { border-color: var(--accent2); }
+    .step-num { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text2); min-width: 20px; }
+    .step-content { flex: 1; }
+    .step-action { font-size: 13px; color: var(--text0); font-weight: 500; line-height: 1.4; }
+    .step-rationale { font-size: 11px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
+    .step-priority {
+      font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 2px 6px; border-radius: 2px;
+      white-space: nowrap; align-self: flex-start; margin-top: 1px;
+    }
+    .pri-immediate { background: rgba(255,68,85,0.12); color: var(--red); }
+    .pri-high      { background: rgba(255,176,32,0.12); color: var(--amber); }
+    .pri-medium    { background: rgba(0,200,255,0.08); color: var(--accent2); }
+
+    /* IOCs & Assets */
+    .tags-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ioc-tag {
+      font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 4px;
+      background: var(--bg3); border: 1px solid var(--border2); color: var(--text1);
+    }
+    .asset-tag {
+      font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 4px;
+      background: rgba(0,229,122,0.05); border: 1px solid rgba(0,229,122,0.15); color: var(--green2);
+    }
+
+    /* Error */
+    .error-card {
+      background: rgba(255,68,85,0.06); border: 1px solid rgba(255,68,85,0.2);
+      border-radius: 8px; padding: 16px;
+    }
+    .error-title { font-family: var(--mono); font-size: 11px; color: var(--red); font-weight: 600; margin-bottom: 6px; }
+    .error-msg { font-size: 12px; color: var(--text2); line-height: 1.6; }
+
+    /* Scan line effect onAPI online header */
+    header::after {
+      content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.3;
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-mark">S</div>
+      <div>
+        <div class="logo-name">SOCratic</div>
+        <div class="logo-tag">AI TRIAGE ENGINE</div>
+      </div>
+    </div>
+    <div class="header-mid"></div>
+    <div class="status-bar">
+      <div class="status-dot" id="statusDot"></div>
+      <div class="status-text">API <span id="statusText">connecting...</span></div>
+    </div>
+    <div class="model-badge" id="modelBadge">claude</div>
+  </header>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- LEFT: Input -->
+    <div class="panel panel-left">
+      <div class="panel-header">
+        <div class="panel-title"><span>01</span>Alert Input</div>
+      </div>
+      <div class="panel-body">
+        <div class="input-section">
+
+          <!-- Source selector -->
+          <div>
+            <div class="label">Source SIEM</div>
+            <div class="source-row" id="sourceRow">
+              <button class="source-btn active" data-val="manual">Manual</button>
+              <button class="source-btn" data-val="wazuh">Wazuh</button>
+              <button class="source-btn" data-val="splunk">Splunk</button>
+              <button class="source-btn" data-val="elk">ELK</button>
+              <button class="source-btn" data-val="fortisiem">FortiSIEM</button>
+            </div>
+          </div>
+
+          <!-- Alert textarea -->
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+            <div class="label">Raw Alert</div>
+            <textarea
+              class="alert-textarea"
+              id="alertInput"
+              placeholder='Paste your raw alert here...
+
+Examples:
+• Wazuh JSON alert
+• Splunk search result
+• Syslog line
+• Any SIEM output'
+            ></textarea>
+          </div>
+
+          <!-- Context -->
+          <div>
+            <div class="label">Additional Context <span style="opacity:0.5">(optional)</span></div>
+            <input class="context-input" id="contextInput" type="text" placeholder="e.g. Internal scanner, business hours, DMZ host..." />
+          </div>
+
+          <!-- Analyze button -->
+          <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()">
+            ⟶ &nbsp; Analyze Alert
+          </button>
+
+          <!-- Examples -->
+          <div>
+            <div class="label" style="margin-bottom:8px">Quick Examples</div>
+            <div class="examples">
+              <button class="example-btn" onclick="loadExample('bruteforce')">
+                <div class="example-title">SSH Brute Force</div>
+                <div class="example-desc">47 failed auth attempts from external IP</div>
+              </button>
+              <button class="example-btn" onclick="loadExample('privesc')">
+                <div class="example-title">Privilege Escalation</div>
+                <div class="example-desc">www-data attempting sudo to root</div>
+              </button>
+              <button class="example-btn" onclick="loadExample('scan')">
+                <div class="example-title">Port Scan (likely FP)</div>
+                <div class="example-desc">Internal Nessus scanner during business hours</div>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Results -->
+    <div class="panel panel-right">
+      <div class="panel-header">
+        <div class="panel-title"><span>02</span>Analysis</div>
+        <div id="resultsMeta" style="font-family:var(--mono);font-size:10px;color:var(--text2);margin-left:auto;"></div>
+      </div>
+      <div class="panel-body" id="resultsPanel">
+
+        <div class="empty-state">
+          <div class="empty-icon">⬡</div>
+          <div class="empty-text">
+            Paste an alert and click Analyze<br/>
+            or load a quick example
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8000/api/v1';
+let selectedSource = 'manual';
+
+// ── Source selector ────────────────────────────────────────────────────────
+document.getElementById('sourceRow').addEventListener('click', e => {
+  const btn = e.target.closest('.source-btn');
+  if (!btn) return;
+  document.querySelectorAll('.source-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedSource = btn.dataset.val;
+});
+
+// ── Health check on load ───────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/health`);
+    const d = await r.json();
+    document.getElementById('statusText').textContent = 'online';
+    document.getElementById('statusText').style.color = 'var(--green)';
+    document.getElementById('statusDot').style.background = 'var(--green)';
+    document.getElementById('modelBadge').textContent = d.model || 'claude';
+  } catch {
+    document.getElementById('statusText').textContent = 'offline';
+    document.getElementById('statusText').style.color = 'var(--red)';
+    document.getElementById('statusDot').style.background = 'var(--red)';
+    document.getElementById('statusDot').style.animation = 'none';
+  }
+}
+checkHealth();
+
+// ── Example alerts ─────────────────────────────────────────────────────────
+const EXAMPLES = {
+  bruteforce: {
+    source: 'wazuh',
+    alert: `{
+  "rule": {
+    "level": 10,
+    "description": "Multiple authentication failures",
+    "id": "5503",
+    "groups": ["authentication_failures"]
+  },
+  "agent": { "name": "web-server-01", "ip": "10.0.0.50" },
+  "data": {
+    "srcip": "203.0.113.42",
+    "dstuser": "admin",
+    "program_name": "sshd"
+  },
+  "full_log": "sshd: Failed password for admin from 203.0.113.42 port 4521 ssh2 (x47 in 60s)",
+  "timestamp": "2025-03-13T03:22:11.000Z"
+}`
+  },
+  privesc: {
+    source: 'manual',
+    alert: `Mar 13 03:22:11 prod-server sudo: unknown user: hacker; TTY=pts/0; PWD=/tmp; USER=root
+Mar 13 03:22:13 prod-server su: pam_unix(su:auth): authentication failure; logname=www-data uid=33
+Mar 13 03:22:15 prod-server sudo: www-data : command not allowed ; TTY=pts/1 ; USER=root ; COMMAND=/bin/bash
+Mar 13 03:22:18 prod-server kernel: audit: type=1400 audit(1741830138.000:47): apparmor="DENIED" operation="exec" profile="www-data" name="/bin/bash"`
+  },
+  scan: {
+    source: 'wazuh',
+    alert: `{
+  "rule": {
+    "level": 6,
+    "description": "Port scan detected",
+    "id": "40101"
+  },
+  "agent": { "name": "nessus-scanner", "ip": "10.0.1.5" },
+  "data": {
+    "srcip": "10.0.1.5",
+    "dstip": "10.0.0.0/24",
+    "ports_scanned": 1024
+  },
+  "full_log": "Nessus scan initiated from internal scanner 10.0.1.5 — scheduled Tuesday 09:00 UTC",
+  "timestamp": "2025-03-13T09:00:01.000Z"
+}`
+  }
+};
+
+function loadExample(key) {
+  const ex = EXAMPLES[key];
+  document.getElementById('alertInput').value = ex.alert;
+  // Set source
+  document.querySelectorAll('.source-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === ex.source);
+  });
+  selectedSource = ex.source;
+}
+
+// ── Main analysis ──────────────────────────────────────────────────────────
+async function runAnalysis() {
+  const raw = document.getElementById('alertInput').value.trim();
+  if (!raw) { flashTextarea(); return; }
+
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.innerHTML = '<span class="spinner"></span> Analyzing...';
+
+  const start = Date.now();
+  showLoading();
+
+  try {
+    const resp = await fetch(`${API}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        raw_alert: raw,
+        source: selectedSource,
+        additional_context: document.getElementById('contextInput').value.trim() || null
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+    renderResults(data, elapsed);
+
+  } catch (err) {
+    renderError(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.innerHTML = '⟶ &nbsp; Analyze Alert';
+  }
+}
+
+// ── Keyboard shortcut: Ctrl+Enter ─────────────────────────────────────────
+document.getElementById('alertInput').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runAnalysis();
+});
+
+function flashTextarea() {
+  const el = document.getElementById('alertInput');
+  el.style.borderColor = 'var(--red)';
+  setTimeout(() => el.style.borderColor = '', 800);
+}
+
+// ── Loading state ──────────────────────────────────────────────────────────
+function showLoading() {
+  const steps = ['Parsing alert structure...', 'Mapping to MITRE ATT&CK...', 'Scoring false positive likelihood...', 'Generating investigation steps...'];
+  let i = 0;
+  document.getElementById('resultsPanel').innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px;">
+      <div style="width:40px;height:40px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+      <div id="loadingStep" style="font-family:var(--mono);font-size:11px;color:var(--text2);letter-spacing:0.06em;"></div>
+    </div>`;
+  const el = document.getElementById('loadingStep');
+  if (el) el.textContent = steps[0];
+  window._loadingInterval = setInterval(() => {
+    i = (i + 1) % steps.length;
+    const el = document.getElementById('loadingStep');
+    if (el) el.textContent = steps[i];
+  }, 900);
+}
+
+// ── Render results ─────────────────────────────────────────────────────────
+function renderResults(d, elapsed) {
+  clearInterval(window._loadingInterval);
+  document.getElementById('resultsMeta').textContent = `${elapsed}s · ${d.model_used}`;
+
+  const fp = d.false_positive;
+  const fpColor = fp.score > 65 ? 'var(--green)' : fp.score > 40 ? 'var(--amber)' : 'var(--red)';
+  const sevClass = `sev-${d.severity}`;
+
+  const iocHtml = d.iocs?.length
+    ? d.iocs.map(i => `<span class="ioc-tag">${esc(i)}</span>`).join('')
+    : '<span style="font-family:var(--mono);font-size:11px;color:var(--text2);">None detected</span>';
+
+  const assetHtml = d.affected_assets?.length
+    ? d.affected_assets.map(a => `<span class="asset-tag">${esc(a)}</span>`).join('')
+    : '<span style="font-family:var(--mono);font-size:11px;color:var(--text2);">None detected</span>';
+
+  const mitreHtml = (d.mitre_techniques || []).map(t => `
+    <div class="mitre-item">
+      <div>
+        <div class="mitre-id">${esc(t.technique_id)}</div>
+        <a class="mitre-link" href="${esc(t.url)}" target="_blank">↗ ATT&CK</a>
+      </div>
+      <div class="mitre-info">
+        <div class="mitre-name">${esc(t.technique_name)}</div>
+        <div class="mitre-tactic">${esc(t.tactic)}</div>
+        <div class="conf-bar"><div class="conf-fill" style="width:${Math.round(t.confidence*100)}%"></div></div>
+      </div>
+      <div class="mitre-conf">${Math.round(t.confidence * 100)}%</div>
+    </div>`).join('');
+
+  const stepsHtml = (d.investigation_steps || []).map(s => `
+    <div class="step-item step-${s.priority}">
+      <div class="step-num">${s.step_number}</div>
+      <div class="step-content">
+        <div class="step-action">${esc(s.action)}</div>
+        <div class="step-rationale">${esc(s.rationale)}</div>
+      </div>
+      <div class="step-priority pri-${s.priority}">${s.priority}</div>
+    </div>`).join('');
+
+  document.getElementById('resultsPanel').innerHTML = `
+    <div class="results">
+
+      <!-- Summary -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Summary</div>
+          <div class="severity-badge ${sevClass}">${d.severity}</div>
+        </div>
+        <div class="card-body">
+          <div class="summary-text">${esc(d.summary)}</div>
+          <div class="alert-type-tag">${esc(d.alert_type)}</div>
+        </div>
+      </div>
+
+      <!-- FP Score -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">False Positive Score</div>
+        </div>
+        <div class="card-body">
+          <div class="fp-row">
+            <div>
+              <div class="fp-score-big" style="color:${fpColor}">${fp.score}</div>
+              <div class="fp-score-label">/ 100</div>
+            </div>
+            <div class="fp-bar-wrap">
+              <div class="fp-bar-track">
+                <div class="fp-bar-fill" style="width:${fp.score}%;background:${fpColor}"></div>
+              </div>
+              <div class="fp-label-big" style="color:${fpColor}">${esc(fp.label)}</div>
+            </div>
+          </div>
+          <div class="fp-reasoning">${esc(fp.reasoning)}</div>
+          <div class="fp-indicators">${(fp.key_indicators||[]).map(k=>`<span class="fp-indicator">${esc(k)}</span>`).join('')}</div>
+        </div>
+      </div>
+
+      <!-- MITRE -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">MITRE ATT&CK Mapping</div></div>
+        <div class="card-body">
+          <div class="mitre-list">${mitreHtml || '<span style="font-size:12px;color:var(--text2);">No techniques mapped</span>'}</div>
+        </div>
+      </div>
+
+      <!-- Investigation Steps -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">Investigation Steps</div></div>
+        <div class="card-body">
+          <div class="steps-list">${stepsHtml || '<span style="font-size:12px;color:var(--text2);">No steps generated</span>'}</div>
+        </div>
+      </div>
+
+      <!-- IOCs + Assets -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="card">
+          <div class="card-header"><div class="card-title">IOCs</div></div>
+          <div class="card-body"><div class="tags-wrap">${iocHtml}</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Affected Assets</div></div>
+          <div class="card-body"><div class="tags-wrap">${assetHtml}</div></div>
+        </div>
+      </div>
+
+    </div>`;
+}
+
+function renderError(msg) {
+  clearInterval(window._loadingInterval);
+  document.getElementById('resultsMeta').textContent = '';
+  document.getElementById('resultsPanel').innerHTML = `
+    <div class="error-card">
+      <div class="error-title">⚠ Analysis Failed</div>
+      <div class="error-msg">${esc(msg)}<br/><br/>Make sure the SOCratic backend is running at localhost:8000</div>
+    </div>`;
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
